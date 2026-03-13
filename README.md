@@ -708,6 +708,137 @@ You'll learn:
 
 better alternative to select()
 no 1024 limit
+PART 7 — poll() (Better I/O Multiplexing)
+
+poll() is like select() but more scalable.
+
+1. Why poll() Exists
+
+Problems with select():
+
+1️⃣ Maximum sockets limit: 1024 (FD_SETSIZE)
+2️⃣ Kernel scans entire set every time → slow for large n
+3️⃣ API not flexible for large dynamic lists
+
+poll() solves these problems:
+
+No fixed size limit
+
+Accepts dynamic arrays of sockets
+
+Each socket has its own event flags
+
+2. poll() Basics
+#include <poll.h>
+
+Structure:
+
+struct pollfd {
+    int fd;         // File descriptor (socket)
+    short events;   // Events we want to monitor
+    short revents;  // Events that actually occurred
+};
+3. Events You Can Monitor
+Event	Meaning
+POLLIN	Data to read (recv)
+POLLOUT	Ready to write (send)
+POLLERR	Error occurred
+POLLHUP	Hang up (connection closed)
+4. Function Signature
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+
+Parameters:
+
+fds → array of pollfd structures
+
+nfds → number of elements in fds
+
+timeout → milliseconds (-1 = infinite wait)
+
+Returns:
+
+Number of sockets ready
+
+0 → timeout
+
+-1 → error
+
+5. Basic Workflow
+
+Create a server socket
+
+Bind & listen
+
+Initialize pollfd array
+
+pollfd fds[MAX_CLIENTS];
+
+Loop:
+
+while(true) {
+    poll(fds, nfds, timeout);
+
+    for each fds[i] {
+        if(fds[i].revents & POLLIN) {
+            if(fds[i].fd == server_fd)
+                accept new client
+            else
+                recv data
+        }
+    }
+}
+6. Example Concept
+
+Suppose:
+
+server_fd = 3
+client1_fd = 4
+client2_fd = 5
+
+Array:
+
+fds[0].fd = server_fd; fds[0].events = POLLIN
+fds[1].fd = client1_fd; fds[1].events = POLLIN
+fds[2].fd = client2_fd; fds[2].events = POLLIN
+
+Call:
+
+poll(fds, 3, -1)
+
+Kernel returns:
+
+fds[1].revents = POLLIN // client1 sent data
+
+Server only reads ready socket → efficient.
+
+7. Why poll() is Better than select()
+
+1️⃣ No 1024 socket limit
+2️⃣ Works well with dynamic arrays of sockets
+3️⃣ Cleaner event detection (revents)
+4️⃣ Still O(n) complexity, but better API
+
+8. Limitations
+
+Still O(n) → kernel checks all fds
+
+Not ideal for 100k+ connections
+
+Solution: epoll, which is O(1) → kernel only reports ready sockets, used by NGINX, HAProxy, Envoy.
+
+9. High-Level Comparison
+Feature	select()	poll()	epoll()
+Max fds	1024	dynamic	dynamic
+Complexity	O(n)	O(n)	O(1)
+Events	read/write	read/write	read/write/hup
+Industrial use	old	better	modern, high perf
+10. Assignment (Practice)
+
+1️⃣ Modify your multi-client server to use poll()
+2️⃣ Handle multiple clients in a single thread
+3️⃣ Echo messages back to clients
+
+After this, you’ll have the foundation to understand epoll, which is exactly how modern load balancers handle millions of connections efficiently.
 cleaner API
 
 Then we move to:
