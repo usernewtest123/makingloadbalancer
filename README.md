@@ -455,3 +455,263 @@ g++ server.cpp -o server
 Run:
 
 ./server
+Now we start I/O multiplexing, which is the first step toward event-driven servers.
+This is the idea that allowed systems like NGINX and HAProxy to handle thousands of connections efficiently.
+
+PART 6 — select() (Monitoring Multiple Sockets)
+
+Problem with previous server:
+
+accept client
+recv from client
+handle client
+
+If you have many clients, the server must check many sockets.
+
+Instead of checking each socket manually, we ask the kernel:
+
+Tell me which sockets are ready for reading.
+
+This is what select() does.
+
+1. What select() Does
+
+select() monitors multiple file descriptors (including sockets).
+
+It tells you when a socket is:
+
+ready to read
+ready to write
+has error
+
+Diagram:
+
+        Kernel
+           |
+   -------------------
+   |   |   |   |   |
+ sock sock sock sock
+   |   |   |   |
+   |---select()---|
+           |
+     returns ready sockets
+2. Function Signature
+int select(
+    int nfds,
+    fd_set *readfds,
+    fd_set *writefds,
+    fd_set *exceptfds,
+    struct timeval *timeout
+);
+
+Simplified idea:
+
+select()
+waits until one socket has data
+3. Important Data Structure
+
+fd_set
+
+This represents a set of file descriptors.
+
+Example:
+
+fd_set readfds;
+4. Important Macros
+FD_ZERO()
+FD_SET()
+FD_ISSET()
+FD_CLR()
+Clear the set
+FD_ZERO(&readfds);
+Add socket
+FD_SET(sockfd, &readfds);
+Check if ready
+FD_ISSET(sockfd, &readfds)
+5. Example Concept
+
+Suppose you have:
+
+server_fd
+client1
+client2
+client3
+
+Server creates set:
+
+readfds = {server_fd, client1, client2, client3}
+
+Then call:
+
+select()
+
+Kernel waits until any socket has data.
+
+Example result:
+
+client2 ready
+
+Then server reads only client2.
+
+6. Architecture of a select() Server
+while(true)
+{
+    FD_ZERO()
+    FD_SET(server_fd)
+    FD_SET(all client sockets)
+
+    select()
+
+    if(new connection)
+        accept()
+
+    if(client has data)
+        recv()
+}
+
+This is called an event loop.
+
+7. Basic Example Code
+
+Simplified server using select():
+
+#include <iostream>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
+int main() {
+
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(8080);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(server_fd, (sockaddr*)&addr, sizeof(addr));
+    listen(server_fd, 5);
+
+    fd_set readfds;
+
+    while(true)
+    {
+        FD_ZERO(&readfds);
+        FD_SET(server_fd, &readfds);
+
+        select(server_fd + 1, &readfds, NULL, NULL, NULL);
+
+        if(FD_ISSET(server_fd, &readfds))
+        {
+            int client = accept(server_fd, NULL, NULL);
+            std::cout << "Client connected\n";
+            close(client);
+        }
+    }
+}
+
+This server can detect new connections using select().
+
+8. Handling Multiple Clients with select()
+
+Real server:
+
+server_fd
+client_sockets[1000]
+
+Algorithm:
+
+1. Add all sockets to fd_set
+2. call select()
+3. kernel marks ready sockets
+4. process only those sockets
+9. Why select() Was Revolutionary
+
+Before this:
+
+1 thread per client
+
+With select():
+
+1 thread
+1000 sockets
+
+Huge performance improvement.
+
+10. Limitations of select()
+
+Unfortunately it has problems:
+
+1. Max sockets
+FD_SETSIZE = 1024
+
+So you can monitor only ~1024 sockets.
+
+2. Slow for large systems
+
+Kernel must scan the entire set every call.
+
+Complexity:
+
+O(n)
+11. Why Modern Servers Don't Use select()
+
+High-performance servers need:
+
+100k connections
+500k connections
+1M connections
+
+So they use epoll instead.
+
+Used by:
+
+NGINX
+
+Envoy
+
+HAProxy
+
+12. Evolution of Linux Network APIs
+select()  → old
+poll()    → improved
+epoll()   → modern Linux
+
+For your load balancer project, we will eventually use:
+
+epoll()
+
+Because it can handle millions of connections.
+
+Assignment (Important)
+
+Modify your server:
+
+1️⃣ Maintain an array:
+
+int clients[100];
+
+2️⃣ Add new clients to fd_set.
+
+3️⃣ When select() shows a socket ready:
+
+recv()
+print message
+
+You will now have a multi-client event-driven server.
+
+Next Part (Extremely Important)
+
+PART 7 — poll()
+
+You'll learn:
+
+better alternative to select()
+no 1024 limit
+cleaner API
+
+Then we move to:
+
+epoll()
+
+Which is the core technology behind modern load balancers.
