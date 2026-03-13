@@ -282,4 +282,176 @@ After Part 5–6, you will already be able to build a basic load balancer.
 
 If you want, I can also give you a FULL INDUSTRY ROADMAP for a C++ Load Balancer (similar to Nginx/Envoy) so the project becomes resume + interview level.
 
+PART 2 — First TCP Server in C++ (Linux)
 
+We will learn the 5 core system calls:
+
+socket()
+bind()
+listen()
+accept()
+send()/recv()
+
+These are Linux kernel networking APIs.
+
+1. Basic Server Workflow
+
+The TCP server always follows this order:
+
+1. socket()   -> create socket
+2. bind()     -> attach socket to IP + PORT
+3. listen()   -> wait for connections
+4. accept()   -> accept client
+5. send/recv  -> communicate
+6. close()
+
+Visual:
+
+Client  --------connect()------->  Server
+                                   |
+                              accept()
+                                   |
+                              send/recv
+2. Required Header Files
+#include <iostream>
+#include <cstring>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
+What they do:
+
+sys/socket.h   -> socket APIs
+netinet/in.h   -> sockaddr_in structure
+unistd.h       -> close()
+cstring        -> memset
+3. Step 1 — Create a Socket
+int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+Explanation:
+
+AF_INET      -> IPv4
+SOCK_STREAM  -> TCP
+0            -> default protocol
+
+Think of it as:
+
+create TCP communication endpoint
+
+If socket fails:
+
+if (server_fd < 0) {
+    perror("socket failed");
+    return 1;
+}
+4. Step 2 — Define Address and Port
+
+Servers must specify where they listen.
+
+sockaddr_in address;
+
+address.sin_family = AF_INET;
+address.sin_addr.s_addr = INADDR_ANY;
+address.sin_port = htons(8080);
+
+Explanation:
+
+AF_INET     -> IPv4
+INADDR_ANY  -> listen on all network interfaces
+8080        -> port
+
+Why htons()?
+
+Network uses big-endian format.
+
+htons = host to network short
+5. Step 3 — Bind Socket to Port
+bind(server_fd, (struct sockaddr*)&address, sizeof(address));
+
+Meaning:
+
+Attach socket → IP + PORT
+
+Example:
+
+0.0.0.0:8080
+6. Step 4 — Listen for Connections
+listen(server_fd, 5);
+
+Meaning:
+
+Kernel starts waiting for clients
+
+5 = backlog queue
+
+Max pending connections
+7. Step 5 — Accept Client
+int client_socket = accept(server_fd, NULL, NULL);
+
+What happens:
+
+client connect()
+        ↓
+server accept()
+        ↓
+new socket created for client
+
+Important concept:
+
+server_fd      -> listening socket
+client_socket  -> communication socket
+8. Step 6 — Send Data
+const char* message = "Hello from server\n";
+send(client_socket, message, strlen(message), 0);
+9. Step 7 — Close Socket
+close(client_socket);
+close(server_fd);
+10. Full Working TCP Server Code
+#include <iostream>
+#include <cstring>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
+int main() {
+
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (server_fd < 0) {
+        perror("Socket failed");
+        return 1;
+    }
+
+    sockaddr_in address;
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(8080);
+
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        perror("Bind failed");
+        return 1;
+    }
+
+    listen(server_fd, 5);
+
+    std::cout << "Server listening on port 8080...\n";
+
+    int client_socket = accept(server_fd, NULL, NULL);
+
+    const char* message = "Hello from server\n";
+
+    send(client_socket, message, strlen(message), 0);
+
+    close(client_socket);
+    close(server_fd);
+
+    return 0;
+}
+11. Compile
+g++ server.cpp -o server
+
+Run:
+
+./server
